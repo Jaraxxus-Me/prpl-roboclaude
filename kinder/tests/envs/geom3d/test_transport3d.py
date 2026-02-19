@@ -4,15 +4,11 @@ import numpy as np
 import pytest
 from gymnasium.wrappers import RecordVideo
 from prpl_utils.utils import wrap_angle
-from pybullet_helpers.geometry import Pose, SE2Pose
-from relational_structs.spaces import ObjectCentricBoxSpace
 
 from kinder.envs.geom3d.transport3d import (
-    ObjectCentricTransport3DEnv,
     Transport3DEnv,
     Transport3DObjectCentricState,
 )
-from kinder.envs.geom3d.utils import extend_joints_to_include_fingers
 from tests.conftest import MAKE_VIDEOS
 
 

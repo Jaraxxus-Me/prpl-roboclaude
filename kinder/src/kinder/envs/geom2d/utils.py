@@ -1,10 +1,10 @@
 """Utilities."""
 
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from prpl_utils.utils import get_signed_angle_distance, wrap_angle
+from prpl_utils.utils import get_signed_angle_distance
 from relational_structs import (
     Array,
     Object,
@@ -29,7 +29,7 @@ from kinder.envs.utils import (
     double_rectangle_object_to_part_geom,
     get_se2_pose,
     object_to_multibody2d,
-    rectangle_object_to_geom
+    rectangle_object_to_geom,
 )
 
 

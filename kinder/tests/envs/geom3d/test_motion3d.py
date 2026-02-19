@@ -3,14 +3,9 @@
 import numpy as np
 import pytest
 from gymnasium.wrappers import RecordVideo
-from prpl_utils.utils import wrap_angle
-from pybullet_helpers.geometry import Pose
-from relational_structs.spaces import ObjectCentricBoxSpace
 
 from kinder.envs.geom3d.motion3d import (
     Motion3DEnv,
-    Motion3DObjectCentricState,
-    ObjectCentricMotion3DEnv,
 )
 from tests.conftest import MAKE_VIDEOS
 

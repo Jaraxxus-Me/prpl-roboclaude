@@ -1,19 +1,11 @@
 """Tests for table3d.py."""
 
-from typing import Any
-
 import numpy as np
 import pytest
 from gymnasium.wrappers import RecordVideo
-from prpl_utils.utils import wrap_angle
-from pybullet_helpers.geometry import Pose, SE2Pose
-from relational_structs.spaces import ObjectCentricBoxSpace
 
-from kinder.envs.geom3d.save_utils import DEFAULT_DEMOS_DIR, save_demo
 from kinder.envs.geom3d.table3d import (
-    ObjectCentricTable3DEnv,
     Table3DEnv,
-    Table3DObjectCentricState,
 )
 from tests.conftest import MAKE_VIDEOS
 
