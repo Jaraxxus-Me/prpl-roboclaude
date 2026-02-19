@@ -186,6 +186,7 @@ datasets
 
 # third party libraries
 third_party
+!pybullet-helpers/src/pybullet_helpers/third_party/
 
 # local test scripts
 multiple_runs.py
