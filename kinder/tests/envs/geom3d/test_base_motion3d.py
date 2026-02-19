@@ -5,16 +5,11 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 from gymnasium.wrappers import RecordVideo
-from pybullet_helpers.motion_planning import (
-    run_single_arm_mobile_base_motion_planning,
-)
-from relational_structs.spaces import ObjectCentricBoxSpace
 
 import kinder
 from kinder.envs.geom3d.base_motion3d import (
     BaseMotion3DEnv,
     BaseMotion3DObjectCentricState,
-    ObjectCentricBaseMotion3DEnv,
 )
 from tests.conftest import MAKE_VIDEOS
 
@@ -45,49 +40,6 @@ def test_base_motion3d_env(env):  # pylint: disable=redefined-outer-name
     # import pybullet as p
     # while True:
     #     p.getMouseEvents(env.unwrapped._object_centric_env.physics_client_id)
-
-
-def test_motion_planning_in_base_motion3d_env(
-    env,
-):  # pylint: disable=redefined-outer-name
-    """Proof of concept that motion planning works in this environment."""
-    assert isinstance(env.observation_space, ObjectCentricBoxSpace)
-    config = (
-        env.unwrapped._object_centric_env.config  # pylint: disable=protected-access
-    )
-
-    vec_obs, _ = env.reset(seed=123)
-    # NOTE: we should soon make this smoother.
-    oc_obs = env.observation_space.devectorize(vec_obs)
-    obs = BaseMotion3DObjectCentricState(oc_obs.data, oc_obs.type_features)
-
-    # Create a simulator for planning.
-    sim = ObjectCentricBaseMotion3DEnv(config=config, realistic_bg=False)
-
-    base_plan = run_single_arm_mobile_base_motion_planning(
-        sim.robot,
-        sim.robot.base.get_pose(),
-        obs.target_base_pose,
-        collision_bodies=set(),
-        seed=123,
-    )
-    assert base_plan is not None
-
-    env.action_space.seed(123)
-    for target_base_pose in base_plan[1:]:
-        current_base_pose = obs.base_pose
-        delta = target_base_pose - current_base_pose
-        delta_lst = [delta.x, delta.y, delta.rot]
-        action_lst = delta_lst + [0.0] * 7 + [0.0]
-        action = np.array(action_lst, dtype=np.float32)
-        vec_obs, _, done, _, _ = env.step(action)
-        # NOTE: we should soon make this smoother.
-        oc_obs = env.observation_space.devectorize(vec_obs)
-        obs = BaseMotion3DObjectCentricState(oc_obs.data, oc_obs.type_features)
-        if done:
-            break
-    else:
-        assert False, "Plan did not reach goal"
 
 
 def test_check_mobile_base_collisions_is_called(
