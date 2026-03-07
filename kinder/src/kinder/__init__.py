@@ -151,6 +151,19 @@ def register_all_environments() -> None:
         variant_ids=[variant_id],
     )
 
+    # PushPullHook2D-GraspRandom environment (curriculum variant)
+    variant_id = "kinder/PushPullHook2D-GraspRandom-v0"
+    _register(
+        id=variant_id,
+        entry_point="kinder.envs.geom2d.pushpullhook2d_grasp_random:PushPullHook2DGraspRandomEnv",  # pylint: disable=line-too-long
+    )
+    _register_env_class(
+        class_name="PushPullHook2D-GraspRandom",
+        entry_point="kinder.envs.geom2d.pushpullhook2d_grasp_random:PushPullHook2DGraspRandomEnv",  # pylint: disable=line-too-long
+        category="Geom2D",
+        variant_ids=[variant_id],
+    )
+
     # ******* Dynamic2D Environments *******
 
     # DynObstruction2D environment with different numbers of obstructions.
