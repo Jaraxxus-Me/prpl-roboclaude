@@ -63,20 +63,33 @@ def test_hook_theta_varies():
     )
 
 
+def _goal_config_is_collision_free(env, state, robot, gx, gy, gtheta, arm):
+    """Check if robot at (gx, gy, gtheta, arm) is collision-free."""
+    from kinder.envs.utils import state_2d_has_collision
+
+    test = state.copy()
+    test.set(robot, "x", gx)
+    test.set(robot, "y", gy)
+    test.set(robot, "theta", gtheta)
+    test.set(robot, "arm_joint", arm)
+    test.set(robot, "vacuum", 0.0)
+    full = test.copy()
+    full.data.update(env.initial_constant_state.data)
+    return not state_2d_has_collision(
+        full, {robot}, set(full) - {robot}, env._static_object_body_cache
+    )
+
+
 def _solve_grasp(env, state, max_steps=500, step_env=None):
-    """Scripted solver: navigate beside the hook bar, face it, extend arm,
-    suction.
+    """Solver: compute a collision-free grasp pose, navigate there with arm
+    retracted, extend arm, then vacuum.
 
-    The hook has a random orientation in [pi/4, 3*pi/4]. The L-shape's
-    long bar (length_side1) extends from the hook origin along a direction
-    determined by theta. The solver targets a point 75% along the bar
-    (well below the table), approaches perpendicular to the bar, extends
-    the arm so the suction zone overlaps, then turns on vacuum.
-
-    Three phases:
-      1. Navigate to standoff position and face the bar (arm retracted).
-      2. Extend arm fully (no movement).
-      3. Turn on vacuum.
+    1. Compute goal config where suction zone overlaps the hook bar,
+       trying both perpendicular approach directions and picking the one
+       that is collision-free with arm fully extended.
+    2. Navigate to goal (x, y, theta) with arm retracted.
+    3. Extend arm at goal.
+    4. Turn on vacuum.
     """
     if step_env is None:
         step_env = env
@@ -84,96 +97,86 @@ def _solve_grasp(env, state, max_steps=500, step_env=None):
     robot = obj_map["robot"]
     hook = obj_map["hook"]
 
-    phase = "navigate"
+    hx = state.get(hook, "x")
+    hy = state.get(hook, "y")
+    ht = state.get(hook, "theta")
+    hl1 = state.get(hook, "length_side1")
+    arm_length = state.get(robot, "arm_length")
+    gripper_w = state.get(robot, "gripper_width")
+    base_r = state.get(robot, "base_radius")
 
+    # Bar direction and target point (75% along bar).
+    bar_dir = np.array([-np.cos(ht), -np.sin(ht)])
+    bar_pt = np.array([hx, hy]) + bar_dir * hl1 * 0.75
+
+    # Suction zone offset from robot base center.
+    suction_offset = arm_length + gripper_w + gripper_w / 2
+
+    # Try both perpendicular approach directions; pick collision-free one.
+    perp1 = np.array([-bar_dir[1], bar_dir[0]])
+    perp2 = -perp1
+
+    goal_x, goal_y, face_theta = None, None, None
+    for bar_t in [0.75, 0.7, 0.6, 0.8, 0.5]:
+        bp = np.array([hx, hy]) + bar_dir * hl1 * bar_t
+        for perp in [perp1, perp2]:
+            ft = np.arctan2(-perp[1], -perp[0])
+            gx = np.clip(
+                bp[0] + perp[0] * suction_offset,
+                env.config.world_min_x + base_r * 3,
+                env.config.world_max_x - base_r * 3,
+            )
+            gy = np.clip(
+                bp[1] + perp[1] * suction_offset,
+                env.config.world_min_y + base_r * 3,
+                env.config.world_max_y - base_r * 3,
+            )
+            # Must be collision-free with arm extended.
+            if _goal_config_is_collision_free(
+                env, state, robot, gx, gy, ft, arm_length
+            ):
+                goal_x, goal_y, face_theta = gx, gy, ft
+                break
+        if goal_x is not None:
+            break
+
+    if goal_x is None:
+        return False, max_steps
+
+    # Phase 1: Navigate to goal (x, y, theta) with arm retracted.
+    step_count = 0
+    phase = "navigate"
     for step_i in range(max_steps):
         rx = state.get(robot, "x")
         ry = state.get(robot, "y")
         rt = state.get(robot, "theta")
-        hx = state.get(hook, "x")
-        hy = state.get(hook, "y")
-        ht = state.get(hook, "theta")
-        hw = state.get(hook, "width")
-        hl1 = state.get(hook, "length_side1")
-        arm_length = state.get(robot, "arm_length")
-        gripper_w = state.get(robot, "gripper_width")
-        base_r = state.get(robot, "base_radius")
         arm_joint = state.get(robot, "arm_joint")
 
-        # Compute a target point along the hook's long bar.
-        # The bar extends from (hx, hy) in direction (-cos(ht), -sin(ht))
-        # with length hl1. Target 75% along the bar (well below the table).
-        bar_dir_x = -np.cos(ht)
-        bar_dir_y = -np.sin(ht)
-        bar_pt_x = hx + bar_dir_x * hl1 * 0.75
-        bar_pt_y = hy + bar_dir_y * hl1 * 0.75
-
-        # Approach perpendicular to the bar from the robot's current side.
-        perp1_x, perp1_y = -bar_dir_y, bar_dir_x
-        perp2_x, perp2_y = bar_dir_y, -bar_dir_x
-
-        to_robot_x = rx - bar_pt_x
-        to_robot_y = ry - bar_pt_y
-        dot1 = to_robot_x * perp1_x + to_robot_y * perp1_y
-        if dot1 >= 0:
-            perp_x, perp_y = perp1_x, perp1_y
-        else:
-            perp_x, perp_y = perp2_x, perp2_y
-
-        # Standoff distance from the bar centerline: must clear the bar
-        # half-width (hw/2) plus the arm + gripper.
-        standoff_dist = arm_length + gripper_w / 2 + 0.005 + hw / 2
-
-        target_x = bar_pt_x + perp_x * standoff_dist
-        target_y = bar_pt_y + perp_y * standoff_dist
-
-        # Clamp within world bounds (robot must stay inside walls).
-        target_x = np.clip(
-            target_x,
-            env.config.world_min_x + base_r * 3,
-            env.config.world_max_x - base_r * 3,
-        )
-        target_y = np.clip(
-            target_y,
-            env.config.world_min_y + base_r * 3,
-            env.config.world_max_y - base_r * 3,
-        )
-
-        # Face angle: point from standoff toward the bar target point.
-        face_theta = np.arctan2(
-            bar_pt_y - target_y, bar_pt_x - target_x
-        )
-
-        dx_t = target_x - rx
-        dy_t = target_y - ry
-        dist_to_target = np.sqrt(dx_t**2 + dy_t**2)
-
-        # Angle control: face the bar.
+        dx_t = goal_x - rx
+        dy_t = goal_y - ry
+        dist = np.sqrt(dx_t**2 + dy_t**2)
         angle_err = (face_theta - rt + np.pi) % (2 * np.pi) - np.pi
-        dtheta = np.clip(angle_err, -env.config.max_dtheta, env.config.max_dtheta)
+        dtheta = np.clip(
+            angle_err, env.config.min_dtheta, env.config.max_dtheta
+        )
 
         if phase == "navigate":
-            # Move toward standoff position with arm retracted.
-            if dist_to_target > 0.02:
+            if dist > 0.02:
                 speed = 1.0 if abs(angle_err) < 0.4 else 0.3
                 move_dx = np.clip(
-                    dx_t * speed, -env.config.max_dx, env.config.max_dx
+                    dx_t * speed, env.config.min_dx, env.config.max_dx
                 )
                 move_dy = np.clip(
-                    dy_t * speed, -env.config.max_dy, env.config.max_dy
+                    dy_t * speed, env.config.min_dy, env.config.max_dy
                 )
             else:
-                move_dx = 0.0
-                move_dy = 0.0
-            # Transition when at position and facing correctly.
-            if dist_to_target < 0.03 and abs(angle_err) < 0.2:
+                move_dx, move_dy = 0.0, 0.0
+            if dist < 0.03 and abs(angle_err) < 0.2:
                 phase = "extend"
             action = np.array(
                 [move_dx, move_dy, dtheta, 0.0, 0.0], dtype=np.float32
             )
-
         elif phase == "extend":
-            # Extend arm without moving.
             if arm_joint < arm_length - 0.01:
                 action = np.array(
                     [0.0, 0.0, 0.0, env.config.max_darm, 0.0],
@@ -184,17 +187,17 @@ def _solve_grasp(env, state, max_steps=500, step_env=None):
                 action = np.array(
                     [0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32
                 )
-
         else:  # vacuum
             action = np.array(
                 [0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32
             )
 
         state, _, terminated, _, _ = step_env.step(action)
+        step_count += 1
         if terminated:
-            return True, step_i + 1
+            return True, step_count
 
-    return False, max_steps
+    return False, step_count
 
 
 def test_grasp_random_solvable_seed0():
