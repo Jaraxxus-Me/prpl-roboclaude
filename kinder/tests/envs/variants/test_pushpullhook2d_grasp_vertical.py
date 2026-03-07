@@ -56,7 +56,7 @@ def test_hook_always_vertical():
     env.close()
 
 
-def _solve_grasp(env, state, max_steps=500):
+def _solve_grasp(env, state, max_steps=500, step_env=None):
     """Scripted solver: navigate beside the hook bar, face it, extend arm,
     suction.
 
@@ -69,6 +69,8 @@ def _solve_grasp(env, state, max_steps=500):
       2. Extend arm fully (no movement).
       3. Turn on vacuum.
     """
+    if step_env is None:
+        step_env = env
     obj_map = {o.name: o for o in state}
     robot = obj_map["robot"]
     hook = obj_map["hook"]
@@ -156,7 +158,7 @@ def _solve_grasp(env, state, max_steps=500):
                 [0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32
             )
 
-        state, _, terminated, _, _ = env.step(action)
+        state, _, terminated, _, _ = step_env.step(action)
         if terminated:
             return True, step_i + 1
 
@@ -166,7 +168,10 @@ def _solve_grasp(env, state, max_steps=500):
 def test_grasp_vertical_solvable_seed0():
     """Test that the scripted solver solves the environment with seed=0."""
     env = ObjectCentricPushPullHook2DGraspVerticalEnv()
-    state, _ = env.reset(seed=0)
-    solved, steps = _solve_grasp(env, state)
-    env.close()
+    step_env = env
+    if MAKE_VIDEOS:
+        step_env = RecordVideo(env, "unit_test_videos")
+    state, _ = step_env.reset(seed=0)
+    solved, steps = _solve_grasp(env, state, step_env=step_env)
+    step_env.close()
     assert solved, f"Scripted solver failed on seed=0 after {steps} steps"
