@@ -1,10 +1,12 @@
-"""PushPullHook2D curriculum variant: grasp hook, touch and push closer.
+"""PushPullHook2D curriculum variant: buttons vertically aligned.
 
 Same scene as PushPullHook2D (table, buttons, hook, robot) with identical
 geometry. Changes compared to the original:
   1. The hook theta is sampled uniformly in [pi/4, 3*pi/4] (same as original).
-  2. Success = the robot suctions the hook AND the movable button has been
-     pushed closer to the target button compared to the previous step.
+  2. The movable button is placed directly below the target button (same x,
+     smaller y), so the agent only needs to push upward.
+  3. Success = both buttons pressed (movable button pushed into contact with
+     target button), same as the original PushPullHook2D.
 """
 
 from dataclasses import dataclass
@@ -30,7 +32,6 @@ from kinder.envs.geom2d.structs import SE2Pose, ZOrder
 from kinder.envs.geom2d.utils import (
     CRVRobotActionSpace,
     create_walls_from_world_boundaries,
-    get_suctioned_objects,
     move_objects_in_contact,
 )
 from kinder.envs.utils import BLACK, BROWN, sample_se2_pose, state_2d_has_collision
@@ -42,9 +43,9 @@ class PushPullHook2DGraspTouchCloserEnvConfig(
 ):
     """Config for PushPullHook2DGraspTouchCloserEnv().
 
-    Identical to PushPullHook2DEnvConfig except the success condition is
-    grasping the hook AND the movable button getting closer to the target
-    button compared to the previous step.
+    Identical to PushPullHook2DEnvConfig except the movable button is
+    placed directly below the target button (same x, smaller y).
+    Success = both buttons pressed (same as original).
     Hook theta is sampled in [pi/4, 3*pi/4].
     """
 
@@ -155,9 +156,8 @@ class PushPullHook2DGraspTouchCloserEnvConfig(
 class ObjectCentricPushPullHook2DGraspTouchCloserEnv(
     ObjectCentricGeom2DRobotEnv[PushPullHook2DGraspTouchCloserEnvConfig]
 ):
-    """Same scene as PushPullHook2D but success is grasping (suctioning)
-    the hook AND the movable button getting closer to the target button
-    compared to the previous step.
+    """Same scene as PushPullHook2D but the movable button starts directly
+    below the target button. Success = both buttons pressed.
     Hook orientation is random in [pi/4, 3*pi/4]."""
 
     def __init__(
@@ -168,8 +168,6 @@ class ObjectCentricPushPullHook2DGraspTouchCloserEnv(
         **kwargs,
     ) -> None:
         super().__init__(config, **kwargs)
-        # Track the previous distance between movable and target buttons.
-        self._prev_button_dist: float = float("inf")
 
     def _sample_initial_state(self) -> ObjectCentricState:
         # Sample initial robot pose.
@@ -182,16 +180,29 @@ class ObjectCentricPushPullHook2DGraspTouchCloserEnv(
             hook_pose = sample_se2_pose(
                 self.config.hook_init_pose_bounds, self.np_random
             )
-            movable_button_pose = tuple(
-                self.np_random.uniform(
-                    *self.config.movable_button_init_position_bounds
-                )
-            )
+            # Sample target button first.
             target_button_pose = tuple(
                 self.np_random.uniform(
                     *self.config.target_button_init_position_bounds
                 )
             )
+            # Place movable button directly below target button (same x,
+            # smaller y). Sample the vertical offset in a valid range.
+            y_offset = self.np_random.uniform(
+                3 * self.config.movable_button_radius,
+                6 * self.config.movable_button_radius,
+            )
+            movable_button_pose = (
+                target_button_pose[0],
+                target_button_pose[1] - y_offset,
+            )
+            # Check movable button is within bounds.
+            mb_bounds = self.config.movable_button_init_position_bounds
+            if not (
+                mb_bounds[0][1] <= movable_button_pose[1] <= mb_bounds[1][1]
+            ):
+                continue
+
             state = self._create_initial_state(
                 robot_pose,
                 hook_pose=hook_pose,
@@ -203,36 +214,17 @@ class ObjectCentricPushPullHook2DGraspTouchCloserEnv(
             movable_button = obj_name_to_obj["movable_button"]
             target_button = obj_name_to_obj["target_button"]
 
-            dist_movable_button = np.linalg.norm(
-                np.array(
-                    [
-                        state.get(target_button, "x")
-                        - state.get(movable_button, "x"),
-                        state.get(target_button, "y")
-                        - state.get(movable_button, "y"),
-                    ]
-                )
-            )
-
             full_state = state.copy()
             full_state.data.update(self.initial_constant_state.data)
-            if (
-                not state_2d_has_collision(
-                    full_state,
-                    {hook, movable_button, target_button},
-                    set(full_state),
-                    {},
-                )
-                and 3 * self.config.movable_button_radius
-                < dist_movable_button
-                < 6 * self.config.movable_button_radius
+            if not state_2d_has_collision(
+                full_state,
+                {hook, movable_button, target_button},
+                set(full_state),
+                {},
             ):
                 break
         else:
             raise RuntimeError("Failed to sample valid poses for all objects.")
-
-        # Record initial distance between buttons.
-        self._prev_button_dist = float(dist_movable_button)
 
         # Recreate state now with no-collision buttons.
         state = self._create_initial_state(
@@ -415,8 +407,7 @@ class ObjectCentricPushPullHook2DGraspTouchCloserEnv(
         movable_button = obj_name_to_obj["movable_button"]
         target_button = obj_name_to_obj["target_button"]
 
-        # Check if movable button is in contact with target button
-        # (kept from original, cosmetic only).
+        # Check if movable button is in contact with target button.
         button_to_target = np.array(
             [
                 self._current_state.get(target_button, "x")
@@ -431,10 +422,6 @@ class ObjectCentricPushPullHook2DGraspTouchCloserEnv(
             self.press_button(target_button)
 
         reward, terminated = self._get_reward_and_done()
-
-        # Update previous distance for next step's comparison.
-        self._prev_button_dist = dist
-
         truncated = False
         observation = self._get_obs()
         info = self._get_info()
@@ -454,38 +441,28 @@ class ObjectCentricPushPullHook2DGraspTouchCloserEnv(
         state, moved_objects = move_objects_in_contact(state, robot, suctioned_objs)
         return state, moved_objects
 
-    # Success = hook is suctioned AND movable button got closer to target.
+    # Success = both buttons are pressed (same as original PushPullHook2D).
     def _get_reward_and_done(self) -> tuple[float, bool]:
         assert self._current_state is not None
         obj_name_to_obj = {o.name: o for o in self._current_state}
-        robot = obj_name_to_obj["robot"]
-        hook = obj_name_to_obj["hook"]
         movable_button = obj_name_to_obj["movable_button"]
         target_button = obj_name_to_obj["target_button"]
 
-        # Check if hook is grasped.
-        suctioned = get_suctioned_objects(self._current_state, robot)
-        hook_grasped = any(obj == hook for obj, _ in suctioned)
-
-        # Compute current distance between movable and target buttons.
-        curr_dist = float(
-            np.linalg.norm(
-                np.array(
-                    [
-                        self._current_state.get(target_button, "x")
-                        - self._current_state.get(movable_button, "x"),
-                        self._current_state.get(target_button, "y")
-                        - self._current_state.get(movable_button, "y"),
-                    ]
-                )
-            )
+        movable_color = (
+            self._current_state.get(movable_button, "color_r"),
+            self._current_state.get(movable_button, "color_g"),
+            self._current_state.get(movable_button, "color_b"),
         )
-
-        button_got_closer = curr_dist < self._prev_button_dist
-
-        if hook_grasped and button_got_closer:
-            return 0.0, True
-        return -1.0, False
+        target_color = (
+            self._current_state.get(target_button, "color_r"),
+            self._current_state.get(target_button, "color_g"),
+            self._current_state.get(target_button, "color_b"),
+        )
+        terminated = np.allclose(
+            movable_color, self.config.movable_button_pressed_rgb
+        ) and np.allclose(target_color, self.config.target_button_pressed_rgb)
+        reward = 0.0 if terminated else -1.0
+        return reward, terminated
 
 
 # Main env class
@@ -507,8 +484,9 @@ class PushPullHook2DGraspTouchCloserEnv(ConstantObjectKinDEREnv):
             "A 2D environment with a robot, a hook (L-shape), a movable button, "
             "and a target button. "
             "The hook is initialized with a random orientation in [pi/4, 3*pi/4]. "
-            "The goal is to grasp the hook using the robot's vacuum gripper "
-            "and then use it to push the movable button closer to the target button."
+            "The movable button starts directly below the target button. "
+            "The goal is to use the hook to push the movable button upward "
+            "into contact with the target button."
         )
 
     def _create_variant_markdown_description(self) -> str:
@@ -516,21 +494,20 @@ class PushPullHook2DGraspTouchCloserEnv(ConstantObjectKinDEREnv):
 
     def _create_variant_specific_description(self) -> str:
         return (
-            "This variant has one hook (random orientation), one movable button, "
-            "and one target button."
+            "This variant has one hook (random orientation), one movable button "
+            "placed directly below one target button."
         )
 
     def _create_reward_markdown_description(self) -> str:
         return (
-            "A penalty of -1.0 is given at every time step until the "
-            "robot successfully suctions the hook AND the movable button "
-            "has moved closer to the target button compared to the previous "
-            "step (termination, reward 0.0)."
+            "A penalty of -1.0 is given at every time step until both the "
+            "movable button and the target button are pressed (i.e., in "
+            "contact and colored green, termination, reward 0.0)."
         )
 
     def _create_references_markdown_description(self) -> str:
         return (
-            "This is a harder curriculum variant of PushPullHook2DEnv, "
-            "requiring grasping the hook and using it to push the movable "
-            "button closer to the target button."
+            "This is an easier curriculum variant of PushPullHook2DEnv where "
+            "the movable button starts directly below the target button, "
+            "so the agent only needs to push upward."
         )
