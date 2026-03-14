@@ -4,12 +4,12 @@ import abc
 from typing import Optional, Sequence, Union
 
 import numpy as np
-from structs import GroundParameterizedController
 from kinder.envs.kinematic2d.object_types import CRVRobotType
 from kinder.envs.kinematic2d.structs import SE2Pose
 from kinder.envs.kinematic2d.utils import CRVRobotActionSpace
 from numpy.typing import NDArray
 from relational_structs import Object, ObjectCentricState
+from kinder_models.structs import GroundParameterizedController
 
 
 class Kinematic2dRobotController(GroundParameterizedController, abc.ABC):
