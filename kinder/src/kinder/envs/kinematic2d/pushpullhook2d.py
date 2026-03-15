@@ -45,12 +45,12 @@ class PushPullHook2DEnvConfig(Kinematic2DRobotEnvConfig, metaclass=FinalConfigMe
     button_max_y: float = 2.0
 
     # Action space parameters.
-    min_dx: float = -5e-2
-    max_dx: float = 5e-2
-    min_dy: float = -5e-2
-    max_dy: float = 5e-2
-    min_dtheta: float = -np.pi / 16
-    max_dtheta: float = np.pi / 16
+    min_dx: float = -1e-2
+    max_dx: float = 1e-2
+    min_dy: float = -1e-2
+    max_dy: float = 1e-2
+    min_dtheta: float = -np.pi / 32
+    max_dtheta: float = np.pi / 32
     min_darm: float = -1e-1
     max_darm: float = 1e-1
     min_vac: float = 0.0
@@ -104,7 +104,7 @@ class PushPullHook2DEnvConfig(Kinematic2DRobotEnvConfig, metaclass=FinalConfigMe
     # Fixed Button hyperparameters.
     target_button_unpressed_rgb: tuple[float, float, float] = (0.9, 0.0, 0.0)
     target_button_pressed_rgb: tuple[float, float, float] = (0.0, 0.9, 0.0)
-    target_button_radius: float = robot_base_radius / 2
+    target_button_radius: float = robot_base_radius * 2 / 3
     target_button_init_position_bounds: tuple[
         tuple[float, float], tuple[float, float]
     ] = (
@@ -115,7 +115,7 @@ class PushPullHook2DEnvConfig(Kinematic2DRobotEnvConfig, metaclass=FinalConfigMe
     # Movable Button hyperparameters.
     movable_button_unpressed_rgb: tuple[float, float, float] = (0.0, 0.0, 0.9)
     movable_button_pressed_rgb: tuple[float, float, float] = (0.0, 0.9, 0.0)
-    movable_button_radius: float = robot_base_radius / 2
+    movable_button_radius: float = robot_base_radius * 2 / 3
     movable_button_init_position_bounds: tuple[
         tuple[float, float], tuple[float, float]
     ] = (
