@@ -275,8 +275,25 @@ class ObjectCentricObstruction2DEnv(
         target_block_shape: tuple[float, float],
         obstructions: list[tuple[SE2Pose, tuple[float, float]]],
     ) -> ObjectCentricState:
-        # Shallow copy should be okay because the constant objects should not
-        # ever change in this method.
+        # Ensure object centres stay far enough from walls that the robot can
+        # approach them.  The robot needs its base radius plus the gripper
+        # height of clearance on each side.
+        margin = self.config.robot_base_radius + self.config.robot_gripper_height
+        x_lo = self.config.world_min_x + margin
+        x_hi = self.config.world_max_x - margin
+
+        def _clamp_pose(pose: SE2Pose, width: float) -> SE2Pose:
+            """Clamp so the object centre-x stays within [x_lo, x_hi]."""
+            cx = pose.x + width / 2
+            cx = float(np.clip(cx, x_lo, x_hi))
+            return SE2Pose(cx - width / 2, pose.y, pose.theta)
+
+        target_surface_pose = _clamp_pose(target_surface_pose, target_surface_shape[0])
+        target_block_pose = _clamp_pose(target_block_pose, target_block_shape[0])
+        obstructions = [
+            (_clamp_pose(p, s[0]), s) for p, s in obstructions
+        ]
+
         init_state_dict: dict[Object, dict[str, float]] = {}
 
         # Create the robot.
