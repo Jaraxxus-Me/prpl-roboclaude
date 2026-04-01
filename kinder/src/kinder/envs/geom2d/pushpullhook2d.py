@@ -41,7 +41,7 @@ class PushPullHook2DEnvConfig(Geom2DRobotEnvConfig, metaclass=FinalConfigMeta):
     # Button boundaries.
     button_min_x: float = 1.2
     button_max_x: float = 2.4
-    button_min_y: float = (world_max_y - world_min_y) / 2
+    button_min_y: float = 1.6
     button_max_y: float = 2.0
 
     # Action space parameters.
@@ -95,9 +95,9 @@ class PushPullHook2DEnvConfig(Geom2DRobotEnvConfig, metaclass=FinalConfigMeta):
         table_shape[1] / 2,
     )
     hook_init_pose_bounds: tuple[SE2Pose, SE2Pose] = (
-        SE2Pose(world_min_x, table_pose.y - hook_shape[1] / 4, np.pi / 4),
+        SE2Pose(world_min_x, table_pose.y - hook_shape[1] / 4, np.pi / 3),
         SE2Pose(
-            world_max_x - hook_shape[0], table_pose.y + hook_shape[1] / 4, 3 * np.pi / 4
+            world_max_x - hook_shape[0], table_pose.y + hook_shape[1] / 4, 2 * np.pi / 3
         ),
     )
 
