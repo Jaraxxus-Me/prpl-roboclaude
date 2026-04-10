@@ -54,7 +54,7 @@ def register_all_environments() -> None:
     )
 
     # ClutteredRetrieval2D environment with different numbers of obstructions.
-    num_obstructions = [1, 10, 25]
+    num_obstructions = [1, 4, 6, 10, 25]
     variant_ids = []
     for num_obstruction in num_obstructions:
         variant_id = f"kinder/ClutteredRetrieval2D-o{num_obstruction}-v0"
